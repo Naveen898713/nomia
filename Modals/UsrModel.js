@@ -6,8 +6,9 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   dateOfBirth: { type: Date, required: true },
   gender: { type: String, enum: ["male", "female", "other"], required: true },
-  nominee1: { type: String, required: true },
-  nominee2: { type: String, required: true },
+  number: { type: String, required: true },
+  nominee: { type: String, required: true },
+  otp: { type: String, },
   photo: { type: String }, // photo ka URL ya path store hoga
 }, { timestamps: true });
 
