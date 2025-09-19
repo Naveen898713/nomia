@@ -24,7 +24,7 @@ module.exports.registerUser = async (req, res) => {
       gender,
       number,
       nominee,
-      photo: req.file ? req.file.path : null, // multer se file aayegi
+      // photo: req.file ? req.file.path : null, // multer se file aayegi
     });
 
     await newUser.save();
