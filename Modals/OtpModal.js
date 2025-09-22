@@ -1,19 +1,9 @@
 const mongoose = require("mongoose");
 
-const otpSchema = new mongoose.Schema({
-  number: {
-    type: String,
-    required: true,
-  },
-  otp: {
-    type: Number,
-    required: true,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    expires: 120, // document auto-deletes after 120 sec (2 minutes)
-  },
+const OtpSchema = new mongoose.Schema({
+  number: { type: String, required: true },      // full number with country code
+  otp: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now, expires: 300 } // auto delete after 5 min
 });
 
-module.exports = mongoose.model("generateOtp", otpSchema);
+module.exports = mongoose.model("Otp", OtpSchema);

@@ -1,154 +1,223 @@
 // controllers/userController.js
 
+const OtpModal = require("../../Modals/OtpModal");
 const UsrModel = require("../../Modals/UsrModel");
 const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET
 module.exports.registerUser = async (req, res) => {
-  console.log("JWT_SECRET from env:", process.env.JWT_SECRET);
   try {
-    const { name, email, dateOfBirth, gender, number, nominee } = req.body;
+    const { name, email, dateOfBirth, gender, number, nomineeOne, nomineeSec } = req.body;
 
-    if (!name || !email || !dateOfBirth || !gender || !number || !nominee) {
+    if (!name || !dateOfBirth || !gender || !number) {
       return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
-    const userExists = await UsrModel.findOne({ email });
+    // Check for existing user by number or email
+    const userExists = await UsrModel.findOne({
+      $or: [{ number }, { email }]
+    });
+
     if (userExists) {
-      return res.status(400).json({ success: false, message: "Email already registered" });
+      return res.status(400).json({
+        success: false,
+        message: "User with this email or number already exists"
+      });
     }
 
+    // Create new user
     const newUser = new UsrModel({
       name,
       email,
       dateOfBirth,
       gender,
       number,
-      nominee,
-      // photo: req.file ? req.file.path : null, // multer se file aayegi
+      nomineeOne,
+      nomineeSec,
     });
 
     await newUser.save();
+
+    // Generate JWT token (without saving in DB)
     const token = jwt.sign(
-      { userId: newUser._id, email: newUser.email },
+      { userId: newUser._id },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
-    res.status(201).json({ success: true, message: "User registered successfully", data: newUser ,token : token});
-    console.log(token)
+
+    res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      data: newUser,
+      token
+    });
+
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate field: ${Object.keys(error.keyValue)} already exists`
+      });
+    }
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
 
 // Get user by ID
-module.exports.getUser = async (req, res) => {
+module.exports.getUserByToken = async (req, res) => {
   try {
-    const { id } = req.params;
+    const authHeader = req.headers["authorization"];
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: "No token provided" });
+    }
 
-    const user = await UsrModel.findById(id);
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ success: false, message: "Invalid token format" });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Fetch user by userId from token
+    const user = await UsrModel.findById(decoded.userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
     res.status(200).json({ success: true, data: user });
+
   } catch (error) {
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ success: false, message: "Invalid token" });
+    } else if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ success: false, message: "Token expired" });
+    }
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-
-
 // controllers/userController.js
 
-module.exports.updateUser = async (req, res) => {
+module.exports.updateUserByToken = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, dateOfBirth, gender, number, nominee } = req.body;
-
-    // New data object
-    const updatedData = {
-      name,
-      dateOfBirth,
-      gender,
-      number,
-      nominee,
-    };
-
-    // If photo uploaded, add it
-    if (req.file) {
-      updatedData.photo = req.file.path;
+    // Token uthao
+    const authHeader = req.headers["authorization"];
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: "No token provided" });
     }
 
-    const user = await UsrModel.findByIdAndUpdate(id, updatedData, { new: true });
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
 
+    // User find karo
+    const user = await UsrModel.findById(decoded.userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({ success: true, message: "User updated successfully", data: user });
+    // Update fields prepare karo
+    const { name, dateOfBirth, gender, number, nomineeOne, nomineeSec } = req.body;
+    const updatedData = {
+      name: name || user.name,
+      dateOfBirth: dateOfBirth || user.dateOfBirth,
+      gender: gender || user.gender,
+      number: number || user.number,
+      nomineeOne: nomineeOne || user.nomineeOne,
+      nomineeSec: nomineeSec || user.nomineeSec,
+
+    };
+
+    // Photo upload
+    if (req.file) {
+      updatedData.photo = req.file.path; // multer se file ka path
+    }
+
+    // Update
+    const updatedUser = await UsrModel.findByIdAndUpdate(user._id, updatedData, { new: true });
+
+    res.status(200).json({
+      success: true,
+      message: "User updated successfully",
+      data: updatedUser,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-
-let otpStore = {};  
 module.exports.sendOtp = async (req, res) => {
   try {
-    const { number } = req.body;
-    if (!number) {
-      return res.status(400).json({ success: false, message: "Phone number is required" });
+    const { number, countryCode } = req.body;
+
+    if (!number || !countryCode) {
+      return res.status(400).json({ success: false, message: "Number and country code are required" });
     }
 
-    const otp = "1234"; // static
-    otpStore[number] = otp;
+    const fullNumber = `${countryCode}${number}`;
+    // const otp = Math.floor(1000 + Math.random() * 9000).toString(); 
+       const otp="0000"
+    // Save OTP in DB
+    await OtpModal.findOneAndUpdate(
+      { number: fullNumber },
+      { otp, createdAt: new Date() },
+      { upsert: true, new: true }
+    );
 
-    console.log(`OTP for ${number}: ${otp}`);
+    console.log(`OTP for ${fullNumber}: ${otp}`);
 
     res.status(200).json({
       success: true,
       message: "OTP sent successfully",
-      otp, // dev ke liye bhej rahe
+      number: fullNumber,
+      otp, // dev/testing only
+
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error sending OTP", error: error.message });
   }
 };
 
+
+
 module.exports.verifyOtp = async (req, res) => {
   try {
-    const { number, otp } = req.body;
-    if (!number || !otp) {
-      return res.status(400).json({ success: false, message: "Phone and OTP are required" });
+    const { number, countryCode, otp } = req.body;
+    if (!number || !otp || !countryCode) {
+      return res.status(400).json({ success: false, message: "Number, country code, and OTP are required" });
     }
 
-    if (otpStore[number] && otpStore[number] === otp) {
-      delete otpStore[number]; // OTP used, remove from memory
+    const fullNumber = `${countryCode}${number}`;
 
-      // ✅ Find user by phone number
-      const user = await UsrModel.findOne({number:number });
-      if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
-      }
-
-      // ✅ Generate JWT
-      const token = jwt.sign(
-        { userId: user._id, phone: user.phone, email: user.email },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: "OTP verified successfully",
-        user,
-        token,
-      });
-    } else {
-      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    // Check OTP in DB
+    const otpRecord = await OtpModal.findOne({ number: fullNumber });
+    if (!otpRecord || otpRecord.otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
     }
+
+    // OTP matched → remove OTP record
+    await OtpModal.deleteOne({ number:number });
+
+    // Find user by number
+    const user = await UsrModel.findOne({ number: number });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Generate JWT
+    const token = jwt.sign(
+      { userId: user._id, number: user.number, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+      user,
+      token
+      
+    });
+
   } catch (error) {
     res.status(500).json({ success: false, message: "Error verifying OTP", error: error.message });
   }
