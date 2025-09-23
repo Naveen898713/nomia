@@ -168,8 +168,8 @@ module.exports.sendOtp = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "OTP sent successfully",
-      number: fullNumber,
-      otp, // dev/testing only
+      // number: fullNumber,
+      // otp, // dev/testing only
 
     });
   } catch (error) {
@@ -195,15 +195,20 @@ module.exports.verifyOtp = async (req, res) => {
     }
 
     // OTP matched → remove OTP record
-    await OtpModal.deleteOne({ number:number });
+    await OtpModal.deleteOne({ number: fullNumber });
 
     // Find user by number
-    const user = await UsrModel.findOne({ number: number });
+    const user = await UsrModel.findOne({ number:number });
+
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      // ✅ OTP sahi hai but user register nahi hai
+      return res.status(200).json({
+        success: true,
+        message: "OTP verified successfully, but user not registered yet",
+      });
     }
 
-    // Generate JWT
+    // ✅ OTP sahi hai & user exist
     const token = jwt.sign(
       { userId: user._id, number: user.number, email: user.email },
       JWT_SECRET,
@@ -215,10 +220,10 @@ module.exports.verifyOtp = async (req, res) => {
       message: "OTP verified successfully",
       user,
       token
-      
     });
 
   } catch (error) {
     res.status(500).json({ success: false, message: "Error verifying OTP", error: error.message });
   }
 };
+
