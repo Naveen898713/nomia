@@ -100,48 +100,58 @@ module.exports.getUserByToken = async (req, res) => {
 
 module.exports.updateUserByToken = async (req, res) => {
   try {
-    // Token uthao
+    // 1. Token uthao
     const authHeader = req.headers["authorization"];
     if (!authHeader) {
-      return res.status(401).json({ success: false, message: "No token provided" });
+      return res.status(401).json({ success: false, message: "Authorization header missing" });
     }
 
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const token = authHeader.split(" ")[1]; // Bearer <token>
+    if (!token) {
+      return res.status(401).json({ success: false, message: "Token missing" });
+    }
 
-    // User find karo
+    // 2. Token verify
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ success: false, message: "Invalid or expired token" });
+    }
+
+    // 3. User find karo
     const user = await UsrModel.findById(decoded.userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Update fields prepare karo
+    // 4. Update fields prepare karo
     const { name, dateOfBirth, gender, number, nomineeOne, nomineeSec } = req.body;
-    const updatedData = {
-      name: name || user.name,
-      dateOfBirth: dateOfBirth || user.dateOfBirth,
-      gender: gender || user.gender,
-      number: number || user.number,
-      nomineeOne: nomineeOne || user.nomineeOne,
-      nomineeSec: nomineeSec || user.nomineeSec,
+    const updatedData = {};
 
-    };
+    if (name) updatedData.name = name;
+    if (dateOfBirth) updatedData.dateOfBirth = dateOfBirth;
+    if (gender) updatedData.gender = gender;
+    if (number) updatedData.number = number;
+    if (nomineeOne) updatedData.nomineeOne = nomineeOne;
+    if (nomineeSec) updatedData.nomineeSec = nomineeSec;
 
-    // Photo upload
+    // 5. Photo upload check
     if (req.file) {
       updatedData.photo = req.file.path; // multer se file ka path
     }
 
-    // Update
+    // 6. User update karo
     const updatedUser = await UsrModel.findByIdAndUpdate(user._id, updatedData, { new: true });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "User updated successfully",
       data: updatedUser,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Update user error:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -204,7 +214,7 @@ module.exports.verifyOtp = async (req, res) => {
       // ✅ OTP sahi hai but user register nahi hai
       return res.status(200).json({
         success: true,
-        message: "OTP verified successfully, but user not registered yet",
+        message: "OTP verified successfully",
       });
     }
 
