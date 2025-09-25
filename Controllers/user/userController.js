@@ -237,3 +237,56 @@ module.exports.verifyOtp = async (req, res) => {
   }
 };
 
+
+
+module.exports.updateNominees = async (req, res) => {
+  try {
+
+    const authHeader = req.headers["authorization"];
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: "Authorization header missing" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ success: false, message: "Token missing" });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ success: false, message: "Invalid or expired token" });
+    }
+
+    // 3. User find karo
+    const user = await UsrModel.findById(decoded.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // 4. Only nominees update
+    const { nomineeOne, nomineeSec } = req.body;
+    if (!nomineeOne && !nomineeSec) {
+      return res.status(400).json({ success: false, message: "At least one nominee is required to update" });
+    }
+
+    if (nomineeOne) user.nomineeOne = nomineeOne;
+    if (nomineeSec) user.nomineeSec = nomineeSec;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Nominees updated successfully",
+      data: {
+        nomineeOne: user.nomineeOne,
+        nomineeSec: user.nomineeSec,
+      },
+    });
+
+  } catch (error) {
+    console.error("Update nominees error:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+};
