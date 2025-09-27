@@ -24,6 +24,7 @@ app.use("/video",require('./Routes/videos/VideoRoutes'),);
 app.use("/photo",require('./Routes/photo/PhotoRoutes'),);
 app.use("/recording",require('./Routes/recording/RecordingRoutes'),);
 app.use("/help-support",require('./Routes/Supports/SupportsOfHelpRoutes'),);
+app.use("/problem",require('./Routes/Problems/ProblemsRoutes'),);
 
 app.listen(process.env.PORT, () => console.log(`Server running on http://localhost:${process.env.PORT}`));
 
